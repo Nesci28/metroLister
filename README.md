@@ -18,6 +18,11 @@ PASSWORD
 Par votre compte metro.ca
 
 ### Utilisation
+Pour générer le CSV à partir du cart:
 ```
-node app.js
+node app.js generate
+```
+Pour générer le CSV à partir du dernier fichier JSON déjà créé:
+```
+node app.js`
 ```
