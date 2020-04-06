@@ -1,7 +1,9 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const removeDiacritics = require('diacritics').remove;
 const fs = require('fs');
 const { execSync } = require('child_process');
+const random_useragent = require('random-useragent');
 
 puppeteer.use(StealthPlugin());
 
@@ -18,7 +20,7 @@ const PASSWORD = process.env.PASSWORD;
     fs.mkdirSync('./list');
   }
 
-  if (process.argv[0] === 'generate') {
+  if (process.argv[process.argv.length - 1] === 'generate') {
     index = index + 1;
     const options = {
       headless: false,
@@ -30,8 +32,11 @@ const PASSWORD = process.env.PASSWORD;
     const browser = await puppeteer.launch(options);
     const page = await browser.newPage();
     await page.setUserAgent(
-      '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36',
+      random_useragent.getRandom(ua => {
+        return ua.browserName === 'Chrome';
+      }),
     );
+    await page.setDefaultNavigationTimeout(0);
     console.log('Navigating to metro.ca');
     await page.goto('https://metro.ca');
 
@@ -44,7 +49,7 @@ const PASSWORD = process.env.PASSWORD;
     console.log('Generating JSON');
     json = await generateJSON(page, index);
 
-    fs.writeFileSync(`./list/list${index}.json`, JSON.strinfify(json));
+    fs.writeFileSync(`./list/list${index}.json`, JSON.stringify(json));
     await browser.close();
   }
 
@@ -75,7 +80,10 @@ function generateCSV(json) {
   let csv = json.map(row =>
     header
       .map(fieldName =>
-        JSON.stringify(row[fieldName].replace(/,/g, '.'), replacer),
+        JSON.stringify(
+          removeDiacritics(row[fieldName].replace(/,/g, '.')),
+          replacer,
+        ),
       )
       .join(','),
   );
@@ -116,21 +124,39 @@ async function generateJSON(page) {
       element => element.innerHTML,
     ),
   );
+  const productBrand = await page.evaluate(() =>
+    [...document.querySelectorAll('.pc--brand')].map(
+      element => element.innerHTML,
+    ),
+  );
+  let productSubstitution = await page.evaluate(() =>
+    [...document.querySelectorAll('input[type="checkbox"]')].map(
+      element => element.checked,
+    ),
+  );
+  productSubstitution.pop();
+  productSubstitution = productSubstitution.filter((_, index) => !(index % 2));
 
   const list = [];
-  productCodes.forEach(productCode => {
+  productNames.forEach(productName => {
     list.push({
-      productCode,
+      productName,
     });
   });
-  productNames.forEach((productName, i) => {
-    list[i].productName = productName;
+  productBrand.forEach((brand, i) => {
+    list[i].brand = brand;
   });
   productQties.forEach((quantity, i) => {
     list[i].quantity = quantity;
   });
   productPrices.forEach((price, i) => {
     list[i].price = price;
+  });
+  productSubstitution.forEach((substitution, i) => {
+    list[i].substitution = substitution ? 'oui' : 'non';
+  });
+  productCodes.forEach((productCode, i) => {
+    list[i].productCode = productCode;
   });
 
   return list;
